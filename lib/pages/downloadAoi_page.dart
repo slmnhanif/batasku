@@ -22,25 +22,18 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
   List<String> kabupatenList = [];
   Map<String, List<LatLng>> polygonsMap = {};
 
-  // selection / drawing state
   DrawMode mode = DrawMode.none;
   String? selectedKabupaten;
 
-  // Rectangle stored as two corner LatLng (sw, ne) - normalized
   LatLng? rectStart;
   LatLng? rectEnd;
 
-  // For resize/move detection we store which handle is active
-  // handles: tl, tr, bl, br, centerMove
   String? activeHandle;
 
-  // Pencil (freehand) points in LatLng
   List<LatLng> pencilPoints = [];
 
-  // Which polygons are currently highlighted
   Set<String> highlighted = {};
 
-  // --- Lifecycle
   @override
   void initState() {
     super.initState();
@@ -59,7 +52,6 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
 
       String polygonJson = region['polygon'] as String;
       List<dynamic> pointsList = jsonDecode(polygonJson);
-      // stored as [lon, lat] in DB
       List<LatLng> latLngList = pointsList.map<LatLng>((e) {
         return LatLng((e[1] as num).toDouble(), (e[0] as num).toDouble());
       }).toList();
@@ -73,11 +65,6 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
     });
   }
 
-  // --------------------------
-  // Utility geometry functions
-  // --------------------------
-
-  // point in polygon - ray casting algorithm
   bool _pointInPolygon(LatLng point, List<LatLng> polygon) {
     final x = point.longitude;
     final y = point.latitude;
@@ -88,18 +75,15 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
       final xj = polygon[j].longitude;
       final yj = polygon[j].latitude;
 
-      final intersect =
-          ((yi > y) != (yj > y)) &&
+      final intersect = ((yi > y) != (yj > y)) &&
           (x < (xj - xi) * (y - yi) / (yj - yi + 0.0) + xi);
       if (intersect) inside = !inside;
     }
     return inside;
   }
 
-  // segment intersection (2D) between segment p1q1 and p2q2
   int _orientation(LatLng a, LatLng b, LatLng c) {
-    double val =
-        (b.latitude - a.latitude) * (c.longitude - b.longitude) -
+    double val = (b.latitude - a.latitude) * (c.longitude - b.longitude) -
         (b.longitude - a.longitude) * (c.latitude - b.latitude);
     if (val.abs() < 1e-12) return 0;
     return (val > 0) ? 1 : 2;
@@ -126,7 +110,6 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
     return false;
   }
 
-  // check if polyline intersects polygon (check each segment)
   bool _polylineIntersectsPolygon(List<LatLng> line, List<LatLng> polygon) {
     for (int i = 0; i < line.length - 1; i++) {
       final a = line[i];
@@ -136,7 +119,6 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
         final d = polygon[j + 1];
         if (_segmentsIntersect(a, b, c, d)) return true;
       }
-      // check if mid point of segment inside polygon (rare cases)
       final mid = LatLng(
         (a.latitude + b.latitude) / 2,
         (a.longitude + b.longitude) / 2,
@@ -146,18 +128,14 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
     return false;
   }
 
-  // check if rectangle polygon intersects polygon (use segment intersections + containment)
   bool _polygonIntersectsPolygon(List<LatLng> polyA, List<LatLng> polyB) {
-    // check segment-wise intersection
     if (_polylineIntersectsPolygon(polyA, polyB)) return true;
     if (_polylineIntersectsPolygon(polyB, polyA)) return true;
-    // check containment: any vertex inside the other
     if (_pointInPolygon(polyA[0], polyB)) return true;
     if (_pointInPolygon(polyB[0], polyA)) return true;
     return false;
   }
 
-  // build rectangle polygon (closed) from two corner latlngs
   List<LatLng> _rectToPolygon(LatLng a, LatLng b) {
     final south = min(a.latitude, b.latitude);
     final north = max(a.latitude, b.latitude);
@@ -172,15 +150,9 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
     ];
   }
 
-  // --------------------------
-  // Drawing & interaction
-  // --------------------------
-
-  // Called when rectangle/pencil changes (create / resize / draw)
   void _evaluateHighlights() {
     Set<String> newHighlighted = {};
 
-    // selection polygon from rectangle
     List<LatLng>? selRectPoly;
     if (rectStart != null && rectEnd != null) {
       selRectPoly = _rectToPolygon(rectStart!, rectEnd!);
@@ -193,9 +165,7 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
       bool intersects = false;
 
       if (mode == DrawMode.pencil && pencilPoints.length >= 2) {
-        // pencil realtime: check line intersects polygon OR any pencil point inside
-        intersects =
-            _polylineIntersectsPolygon(pencilPoints, poly) ||
+        intersects = _polylineIntersectsPolygon(pencilPoints, poly) ||
             pencilPoints.any((p) => _pointInPolygon(p, poly));
       }
 
@@ -211,7 +181,6 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
     });
   }
 
-  // Reset drawing state
   void _clearSelection() {
     setState(() {
       rectStart = null;
@@ -222,30 +191,19 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
     });
   }
 
-  // --------------------------
-  // Gesture helpers over map
-  // --------------------------
-  // We will use a Positioned.fill GestureDetector (stack overlay) to capture
-  // press/drag/release events and convert screen points -> LatLng via MapController.
-
   Offset? _dragStartOffset;
   Offset? _lastOffset;
 
-  // convert global/local offset to LatLng using MapController helpers
   LatLng? _offsetToLatLng(Offset offset) {
     try {
-      // flutter_map MapController has pointToLatLng method in modern versions.
-      // Here we convert Offset -> CustomPoint<double> and use pointToLatLng.
       final screenPoint = CustomPoint(offset.dx, offset.dy);
       final latlng = _mapController.pointToLatLng(screenPoint);
       return latlng;
     } catch (e) {
-      // if conversion fails (version mismatch), return null
       return null;
     }
   }
 
-  // When user presses/drag on overlay:
   void _onPanStart(DragStartDetails details) {
     if (mode == DrawMode.none) return;
     _dragStartOffset = details.localPosition;
@@ -255,11 +213,8 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
     if (startLatLng == null) return;
 
     if (mode == DrawMode.rectangle) {
-      // starting rectangle draw or starting resize/move if inside existing rectangle
       if (rectStart != null && rectEnd != null) {
-        // check if user pressed near handle (corner) or inside center
         final corners = _rectToPolygon(rectStart!, rectEnd!);
-        // corners order: sw, se, ne, nw, sw -> pick first 4 for handles
         for (int i = 0; i < 4; i++) {
           final corner = corners[i];
           final cornerOffset = _mapController.latLngToScreenPoint(corner);
@@ -270,13 +225,11 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
             break;
           }
         }
-        // if not handle, but inside rect -> move
         if (activeHandle == null) {
           final rectPoly = _rectToPolygon(rectStart!, rectEnd!);
           if (_pointInPolygon(startLatLng, rectPoly)) activeHandle = 'move';
         }
       } else {
-        // start new rectangle
         rectStart = startLatLng;
         rectEnd = startLatLng;
       }
@@ -295,13 +248,10 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
 
     if (mode == DrawMode.rectangle) {
       if (activeHandle == null) {
-        // drawing new rectangle
         rectEnd = posLatLng;
       } else if (activeHandle == 'move') {
-        // move rectangle by delta lat/lng computed from screen delta conversion
         final prevLatLng = _offsetToLatLng(_dragStartOffset!);
         if (prevLatLng == null) return;
-        // compute delta in lat/lng
         final dLat = posLatLng.latitude - prevLatLng.latitude;
         final dLng = posLatLng.longitude - prevLatLng.longitude;
         rectStart = LatLng(
@@ -311,7 +261,6 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
         rectEnd = LatLng(rectEnd!.latitude + dLat, rectEnd!.longitude + dLng);
         _dragStartOffset = details.localPosition;
       } else {
-        // resize by moving one corner depending on activeHandle
         switch (activeHandle) {
           case 'sw':
             rectStart = LatLng(posLatLng.latitude, posLatLng.longitude);
@@ -339,12 +288,10 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
   }
 
   void _onPanEnd(DragEndDetails details) {
-    // finish drawing / reset handle
     activeHandle = null;
     _dragStartOffset = null;
     _lastOffset = null;
 
-    // if rectangle degenerate (too small) -> clear
     if (rectStart != null && rectEnd != null) {
       final dLat = (rectStart!.latitude - rectEnd!.latitude).abs();
       final dLng = (rectStart!.longitude - rectEnd!.longitude).abs();
@@ -354,13 +301,9 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
       }
     }
 
-    // pencil: keep drawn polyline for further edits; user can clear manually
     setState(() {});
   }
 
-  // --------------------------
-  // UI
-  // --------------------------
   Widget _buildTopBar() {
     return Positioned(
       top: 12,
@@ -378,12 +321,10 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
                 } else {
                   mode = DrawMode.rectangle;
                   pencilPoints = [];
-                  // langsung buat rectangle default
                   _createDefaultRectangle();
                 }
               });
             },
-
             tooltip: 'Rectangle (drag/resize)',
           ),
           const SizedBox(height: 8),
@@ -399,11 +340,9 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
                   rectStart = null;
                   rectEnd = null;
                   pencilPoints = [];
-                  // langsung ready: drag pertama akan menggambar
                 }
               });
             },
-
             tooltip: 'Pencil (draw realtime)',
           ),
           const SizedBox(height: 8),
@@ -445,7 +384,6 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
     );
   }
 
-  // Draw polygon fill / stroke for map
   List<Polygon> _buildPolygons() {
     final List<Polygon> out = [];
     polygonsMap.forEach((name, poly) {
@@ -464,7 +402,6 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
     return out;
   }
 
-  // build rectangle polygon (if exists)
   List<Polygon> _buildSelectionPolygons() {
     final List<Polygon> out = [];
     if (rectStart != null && rectEnd != null) {
@@ -477,7 +414,6 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
           borderStrokeWidth: 2.0,
         ),
       );
-      // draw handles as small polygons/circles in screen space via Marker
     }
     if (pencilPoints.isNotEmpty) {
       out.add(
@@ -493,10 +429,8 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
   }
 
   void _createDefaultRectangle() {
-    // Buat rectangle kecil di tengah layar
     final center = _mapController.center;
 
-    // Offset kecil (sekitar 0.05°)
     const delta = 0.05;
 
     rectStart = LatLng(center.latitude - delta, center.longitude - delta);
@@ -506,7 +440,6 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
     _evaluateHighlights();
   }
 
-  // build handle markers for rectangle corners (convert latlng -> screen for hit test)
   List<Marker> _buildHandles() {
     final List<Marker> out = [];
     if (rectStart == null || rectEnd == null) return out;
@@ -533,9 +466,6 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
     return out;
   }
 
-  // --------------------------
-  // Build
-  // --------------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -555,19 +485,12 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
                     "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png",
                 userAgentPackageName: 'com.example.app',
               ),
-              // polygons from DB
               PolygonLayer(polygons: _buildPolygons()),
-              // selection polygons (rectangle / pencil)
               PolygonLayer(polygons: _buildSelectionPolygons()),
-              // handles as markers
               MarkerLayer(markers: _buildHandles()),
             ],
           ),
-
-          // Top icons: rectangle, pencil, clear
           _buildTopBar(),
-
-          // Interaction overlay to capture drag events (full screen)
           if (mode != DrawMode.none)
             Positioned.fill(
               child: GestureDetector(
