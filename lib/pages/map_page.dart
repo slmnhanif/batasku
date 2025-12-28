@@ -198,10 +198,7 @@ class _MapPageState extends State<MapPage> {
                               });
 
                               if (isBatasMode) {
-                                await _showNameDialogAndSave(
-                                  pt,
-                                  isBatas: isBatasMode,
-                                );
+                                await _showNameDialogAndSaveBatas(pt);
                               } else {
                                 await _showNameDialogAndSave(pt);
                               }
