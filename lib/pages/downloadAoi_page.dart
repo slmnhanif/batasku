@@ -16,6 +16,8 @@ class DownloadAoiPage extends StatefulWidget {
 }
 
 class _DownloadAoiPageState extends State<DownloadAoiPage> {
+  String mapType = "satelit";
+
   final MapController _mapController = MapController();
 
   // DB data
@@ -37,33 +39,33 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
   @override
   void initState() {
     super.initState();
-    _loadRegionsFromDB();
+    // _loadRegionsFromDB();
   }
 
-  Future<void> _loadRegionsFromDB() async {
-    final db = await DBHelper.instance.database;
-    final regions = await db.query('regions');
-    List<String> names = [];
-    Map<String, List<LatLng>> polyMap = {};
+  // Future<void> _loadRegionsFromDB() async {
+  //   final db = await DBHelper.instance.database;
+  //   final regions = await db.query('regions');
+  //   List<String> names = [];
+  //   Map<String, List<LatLng>> polyMap = {};
 
-    for (var region in regions) {
-      String name = region['name'] as String;
-      names.add(name);
+  //   for (var region in regions) {
+  //     String name = region['name'] as String;
+  //     names.add(name);
 
-      String polygonJson = region['polygon'] as String;
-      List<dynamic> pointsList = jsonDecode(polygonJson);
-      List<LatLng> latLngList = pointsList.map<LatLng>((e) {
-        return LatLng((e[1] as num).toDouble(), (e[0] as num).toDouble());
-      }).toList();
+  //     String polygonJson = region['polygon'] as String;
+  //     List<dynamic> pointsList = jsonDecode(polygonJson);
+  //     List<LatLng> latLngList = pointsList.map<LatLng>((e) {
+  //       return LatLng((e[1] as num).toDouble(), (e[0] as num).toDouble());
+  //     }).toList();
 
-      polyMap[name] = latLngList;
-    }
+  //     polyMap[name] = latLngList;
+  //   }
 
-    setState(() {
-      kabupatenList = names;
-      polygonsMap = polyMap;
-    });
-  }
+  //   setState(() {
+  //     kabupatenList = names;
+  //     polygonsMap = polyMap;
+  //   });
+  // }
 
   bool _pointInPolygon(LatLng point, List<LatLng> polygon) {
     final x = point.longitude;
@@ -75,7 +77,8 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
       final xj = polygon[j].longitude;
       final yj = polygon[j].latitude;
 
-      final intersect = ((yi > y) != (yj > y)) &&
+      final intersect =
+          ((yi > y) != (yj > y)) &&
           (x < (xj - xi) * (y - yi) / (yj - yi + 0.0) + xi);
       if (intersect) inside = !inside;
     }
@@ -83,7 +86,8 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
   }
 
   int _orientation(LatLng a, LatLng b, LatLng c) {
-    double val = (b.latitude - a.latitude) * (c.longitude - b.longitude) -
+    double val =
+        (b.latitude - a.latitude) * (c.longitude - b.longitude) -
         (b.longitude - a.longitude) * (c.latitude - b.latitude);
     if (val.abs() < 1e-12) return 0;
     return (val > 0) ? 1 : 2;
@@ -165,7 +169,8 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
       bool intersects = false;
 
       if (mode == DrawMode.pencil && pencilPoints.length >= 2) {
-        intersects = _polylineIntersectsPolygon(pencilPoints, poly) ||
+        intersects =
+            _polylineIntersectsPolygon(pencilPoints, poly) ||
             pencilPoints.any((p) => _pointInPolygon(p, poly));
       }
 
@@ -480,9 +485,15 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
               zoom: 4.5,
             ),
             children: [
+              // TileLayer(
+              //   urlTemplate:
+              //       "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png",
+              //   userAgentPackageName: 'com.example.app',
+              // ),
               TileLayer(
-                urlTemplate:
-                    "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png",
+                urlTemplate: mapType == "satelit"
+                    ? "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+                    : "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
                 userAgentPackageName: 'com.example.app',
               ),
               PolygonLayer(polygons: _buildPolygons()),
@@ -491,15 +502,52 @@ class _DownloadAoiPageState extends State<DownloadAoiPage> {
             ],
           ),
           _buildTopBar(),
-          if (mode != DrawMode.none)
-            Positioned.fill(
-              child: GestureDetector(
+          Stack(
+            children: [
+              GestureDetector(
                 behavior: HitTestBehavior.translucent,
-                onPanStart: (details) => _onPanStart(details),
-                onPanUpdate: (details) => _onPanUpdate(details),
-                onPanEnd: (details) => _onPanEnd(details),
+
+                onTapDown: mode == DrawMode.pencil
+                    ? (details) {
+                        final latLng = _offsetToLatLng(details.localPosition);
+                        if (latLng == null) return;
+
+                        setState(() {
+                          pencilPoints.add(latLng);
+                        });
+
+                        _evaluateHighlights();
+                      }
+                    : null,
+
+                onPanStart: mode == DrawMode.rectangle ? _onPanStart : null,
+                onPanUpdate: mode == DrawMode.rectangle ? _onPanUpdate : null,
+                onPanEnd: mode == DrawMode.rectangle ? _onPanEnd : null,
+
+                child: FlutterMap(
+                  mapController: _mapController,
+                  options: MapOptions(
+                    interactiveFlags: InteractiveFlag.all,
+                    center: LatLng(-2.5, 118.0),
+                    zoom: 4.5,
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate: mapType == "satelit"
+                          ? "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+                          : "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                      userAgentPackageName: 'com.example.app',
+                    ),
+                    PolygonLayer(polygons: _buildPolygons()),
+                    PolygonLayer(polygons: _buildSelectionPolygons()),
+                    MarkerLayer(markers: _buildHandles()),
+                  ],
+                ),
               ),
-            ),
+
+              _buildTopBar(), // ✅ sekarang BISA diklik
+            ],
+          ),
         ],
       ),
     );

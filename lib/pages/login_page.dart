@@ -128,7 +128,9 @@ class _LoginPageState extends State<LoginPage> {
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xff0F4571),
+                    foregroundColor: Colors.white, // warna teks & icon
                   ),
+
                   onPressed: loading ? null : doLogin,
                   child: loading
                       ? const CircularProgressIndicator(color: Colors.white)
@@ -163,6 +165,9 @@ class _LoginPageState extends State<LoginPage> {
                 width: double.infinity,
                 height: 48,
                 child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.black, // warna teks & icon
+                  ),
                   onPressed: () {
                     Navigator.push(
                       context,

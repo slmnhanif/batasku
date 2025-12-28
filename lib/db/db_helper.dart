@@ -5,6 +5,7 @@ import 'package:path/path.dart';
 class DBHelper {
   static final DBHelper instance = DBHelper._init();
   static Database? _database;
+  String? activeProjectId;
 
   DBHelper._init();
 
@@ -12,6 +13,10 @@ class DBHelper {
     if (_database != null) return _database!;
     _database = await _initDB('batasku_app.db');
     return _database!;
+  }
+
+  void setActiveProject(String projectId) {
+    activeProjectId = projectId;
   }
 
   Future<Database> _initDB(String filePath) async {
@@ -710,6 +715,36 @@ class DBHelper {
       )
     ''');
 
+    // ------------------ MARKER KANTOR DESA TABLE ------------------
+    await db.execute('''
+      CREATE TABLE marker_kantor_desa (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id TEXT,
+        nama TEXT,
+        keterangan TEXT,
+        lat REAL,
+        lng REAL,
+        dibuat TEXT,
+        foto TEXT,
+        is_delete INTEGER DEFAULT 0
+      )
+    ''');
+
+    // ------------------ MARKER TITIK BATAS TABLE ------------------
+    await db.execute('''
+      CREATE TABLE marker_titik_batas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id TEXT,
+        nama TEXT,
+        keterangan TEXT,
+        lat REAL,
+        lng REAL,
+        dibuat TEXT,
+        foto TEXT,
+        is_delete INTEGER DEFAULT 0
+      )
+    ''');
+
     // ------------------ PROJECT SEEDER ------------------
     await db.insert("projects", {
       "project_id": "PRJ-001",
@@ -720,15 +755,41 @@ class DBHelper {
     });
   }
 
+  // Future<bool> login(String username, String password) async {
+  //   final db = await instance.database;
+  //   final result = await db.query(
+  //     "users",
+  //     where: "username = ? AND password = ?",
+  //     whereArgs: [username, password],
+  //   );
+
+  //   return result.isNotEmpty;
+  // }
+
   Future<bool> login(String username, String password) async {
     final db = await instance.database;
+
     final result = await db.query(
       "users",
       where: "username = ? AND password = ?",
       whereArgs: [username, password],
     );
 
-    return result.isNotEmpty;
+    if (result.isEmpty) return false;
+
+    // 🔥 Ambil project terbaru (id DESC)
+    final project = await db.query(
+      "projects",
+      where: "is_delete = 0",
+      orderBy: "id DESC",
+      limit: 1,
+    );
+
+    if (project.isNotEmpty) {
+      activeProjectId = project.first['project_id'] as String;
+    }
+
+    return true;
   }
 
   Future<List<Map<String, dynamic>>> getProjects() async {

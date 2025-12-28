@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../db/db_helper.dart';
+import 'map_page.dart';
+import 'project/project_detail_page.dart';
 
 class ProjectListPage extends StatefulWidget {
   const ProjectListPage({super.key});
@@ -70,6 +72,48 @@ class _ProjectListPageState extends State<ProjectListPage> {
     );
   }
 
+  Future<void> _showProjectDetail(Map<String, dynamic> project) async {
+    final db = await DBHelper.instance.database;
+
+    final result = await db.rawQuery(
+      '''
+    SELECT COUNT(*) as total
+    FROM marker_kantor_desa
+    WHERE project_id = ? AND is_delete = 0
+    ''',
+      [project['project_id']],
+    );
+
+    final totalMarkerDesa = result.first['total'] as int;
+    const totalRekamJejak = 5; // HARD CODE
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text(
+          "Detail Project",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Nama Project : ${project['nama_project']}"),
+            const SizedBox(height: 8),
+            Text("Total Marker Desa : $totalMarkerDesa"),
+            Text("Total Rekam Jejak : $totalRekamJejak"),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Tutup"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -82,38 +126,50 @@ class _ProjectListPageState extends State<ProjectListPage> {
         itemCount: projects.length,
         itemBuilder: (_, i) {
           final p = projects[i];
-          return ListTile(
-            leading: const Icon(Icons.folder),
-            title: Text(p["nama_project"] ?? ""),
-            subtitle: Text(p["keterangan"] ?? ""),
 
-            trailing: PopupMenuButton<String>(
-              onSelected: (value) {
-                switch (value) {
-                  case "edit":
-                    // editProject(p);
-                    break;
-                  case "detail":
-                    // showDetail(p);
-                    break;
-                  case "sync":
-                    // syncProject(p);
-                    break;
-                  case "export":
-                    // exportProject(p);
-                    break;
-                  case "delete":
-                    // deleteProject(p);
-                    break;
-                }
-              },
-              itemBuilder: (_) => [
-                const PopupMenuItem(value: "edit", child: Text("Edit Nama")),
-                const PopupMenuItem(value: "detail", child: Text("Detail")),
-                const PopupMenuItem(value: "sync", child: Text("Sinkronisasi")),
-                const PopupMenuItem(value: "export", child: Text("Export")),
-                const PopupMenuItem(value: "delete", child: Text("Hapus")),
-              ],
+          return GestureDetector(
+            onDoubleTap: () {
+              DBHelper.instance.activeProjectId = p['project_id'];
+
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const MapPage()),
+              );
+            },
+            child: ListTile(
+              leading: const Icon(Icons.folder),
+              title: Text(p["nama_project"] ?? ""),
+              subtitle: Text(p["keterangan"] ?? ""),
+              trailing: PopupMenuButton<String>(
+                onSelected: (value) {
+                  switch (value) {
+                    case "edit":
+                      break;
+                    case "detail":
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ProjectDetailPage(project: p),
+                        ),
+                      );
+                      break;
+                    case "sync":
+                      break;
+                    case "export":
+                      break;
+                    case "delete":
+                      break;
+                  }
+                },
+
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: "edit", child: Text("Edit Nama")),
+                  PopupMenuItem(value: "detail", child: Text("Detail")),
+                  PopupMenuItem(value: "sync", child: Text("Sinkronisasi")),
+                  PopupMenuItem(value: "export", child: Text("Export")),
+                  PopupMenuItem(value: "delete", child: Text("Hapus")),
+                ],
+              ),
             ),
           );
         },
